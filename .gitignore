@@ -1,0 +1,10 @@
+.gradle/
+build/
+.idea/
+*.iml
+out/
+private.pem
+chain.crt
+.DS_Store
+.intellijPlatform/
+.claude/

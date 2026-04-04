@@ -1,0 +1,49 @@
+<idea-plugin>
+    <id>com.aifhandoff.plugin</id>
+    <name>AIF Handoff</name>
+    <vendor url="https://github.com/lee-to" email="thecutcode@gmail.com">AIF Handoff</vendor>
+
+    <description><![CDATA[
+        <h2>AIF Handoff — Autonomous Task Management for AI Agents</h2>
+        <p>
+            AIF Handoff brings an embedded Kanban board directly into your JetBrains IDE,
+            providing a seamless interface for managing tasks handled by autonomous AI agents.
+            The plugin automatically launches a local dev server and renders the full Kanban UI
+            in a dedicated tool window — no need to switch between your IDE and a browser.
+        </p>
+        <h3>Key Features</h3>
+        <ul>
+            <li>One-click setup: automatically clones the repository, installs dependencies, and starts the server</li>
+            <li>Built-in Kanban board with drag-and-drop task management</li>
+            <li>Integrated settings editor for environment variables (.env)</li>
+            <li>Auto-update from the upstream repository</li>
+            <li>Works with IntelliJ IDEA, PhpStorm, WebStorm, PyCharm, and other JetBrains IDEs</li>
+        </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <h3>1.0.0</h3>
+        <ul>
+            <li>Initial release</li>
+            <li>Embedded Kanban board with JCEF browser</li>
+            <li>One-click server setup and management</li>
+            <li>Environment variables editor</li>
+            <li>Auto-restart on settings change</li>
+        </ul>
+    ]]></change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="AIF Handoff"
+                    anchor="right"
+                    secondary="false"
+                    icon="/icons/logo.svg"
+                    factoryClass="com.aifhandoff.plugin.AifToolWindowFactory"/>
+
+        <projectService serviceImplementation="com.aifhandoff.plugin.AifDevServerService"/>
+
+        <notificationGroup id="AIF Handoff"
+                           displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>
