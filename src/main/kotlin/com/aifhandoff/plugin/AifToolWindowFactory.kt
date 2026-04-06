@@ -46,6 +46,7 @@ class AifToolWindowFactory : ToolWindowFactory, DumbAware {
 private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     private val service = project.getService(AifDevServerService::class.java)
+    private val settings = project.getService(AifSettingsService::class.java)
     private var browser: JBCefBrowser? = null
     private val cardPanel = JPanel(CardLayout())
 
@@ -84,7 +85,7 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     private val progressLabel = JLabel("Initializing...")
     private var currentProjectId: String? = null
     private fun getUrl(): String {
-        val base = "http://localhost:${service.getWebPort()}"
+        val base = service.getEffectiveBaseUrl()
         return if (currentProjectId != null) "$base/project/$currentProjectId" else base
     }
 
@@ -170,8 +171,9 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
                 fill = java.awt.GridBagConstraints.NONE
             }
 
-            val installed = AifDevServerService.INSTALL_DIR.resolve(".git").exists()
-            val text = if (installed) {
+            val text = if (service.isRemoteMode()) {
+                "<html><div style='text-align:center;'><h2>AIF Handoff</h2><p>Click <b>Start</b> to connect to remote server.<br><small>${settings.remoteHost}</small></p></div></html>"
+            } else if (AifDevServerService.INSTALL_DIR.resolve(".git").exists()) {
                 "<html><div style='text-align:center;'><h2>AIF Handoff</h2><p>Click <b>Start</b> to launch the Kanban board.</p></div></html>"
             } else {
                 "<html><div style='text-align:center;'><h2>AIF Handoff</h2><p>Click <b>Start</b> to download and launch the Kanban board.<br><small>First launch will clone the repo and install dependencies.</small></p></div></html>"
@@ -286,7 +288,9 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     }
 
     private fun onStart() {
-        showCard(CARD_PROGRESS)
+        if (!service.isRemoteMode()) {
+            showCard(CARD_PROGRESS)
+        }
         service.start {
             currentProjectId = service.ensureProject()
             ApplicationManager.getApplication().invokeLater {
@@ -303,14 +307,16 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     }
 
     private var envTableModel: EnvTableModel? = null
+    private var remoteHostField: JTextField? = null
     private var previousCard: String = CARD_WELCOME
 
     private fun onSettings() {
-        if (!service.isInstalled()) {
-            JOptionPane.showMessageDialog(this, "Start the server first to initialize the project.", "Settings", JOptionPane.INFORMATION_MESSAGE)
-            return
+        if (!service.isInstalled() && !service.isRemoteMode()) {
+            envTableModel?.reload()
+        } else if (service.isInstalled()) {
+            envTableModel?.reload()
         }
-        envTableModel?.reload()
+        remoteHostField?.text = settings.remoteHost
         previousCard = currentCard
         showCard(CARD_SETTINGS)
     }
@@ -366,7 +372,7 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
                 startEnabled = true
                 stopEnabled = false
                 refreshEnabled = false
-                updateEnabled = true
+                updateEnabled = !service.isRemoteMode()
                 progressBar.isVisible = false
                 if (currentCard == CARD_PROGRESS) {
                     showCard(CARD_WELCOME)
@@ -415,6 +421,23 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
         val model = EnvTableModel()
         envTableModel = model
 
+        // --- Remote Host section ---
+        val hostField = JTextField(settings.remoteHost, 30)
+        remoteHostField = hostField
+        val remotePanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 4)).apply {
+            add(JLabel("Remote Host:"))
+            add(hostField)
+            add(JLabel("<html><small>e.g. http://192.168.1.10:5180 — leave empty for local server</small></html>"))
+        }
+        val remoteSection = JPanel(BorderLayout()).apply {
+            val label = JLabel("<html><b>Connection</b></html>").apply {
+                border = BorderFactory.createEmptyBorder(8, 8, 4, 8)
+            }
+            add(label, BorderLayout.NORTH)
+            add(remotePanel, BorderLayout.CENTER)
+        }
+
+        // --- Env table ---
         val table = JTable(model).apply {
             rowHeight = 28
             tableHeader.reorderingAllowed = false
@@ -427,12 +450,23 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
         }
         val scrollPane = JScrollPane(table)
 
+        val envSection = JPanel(BorderLayout()).apply {
+            val header = JLabel("<html><b>Environment Variables</b> — edit .env settings (local server only)</html>").apply {
+                border = BorderFactory.createEmptyBorder(8, 8, 4, 8)
+            }
+            add(header, BorderLayout.NORTH)
+            add(scrollPane, BorderLayout.CENTER)
+        }
+
         val saveButton = JButton("Save")
         val backButton = JButton("Back")
 
         saveButton.addActionListener {
             if (table.isEditing) table.cellEditor.stopCellEditing()
-            service.saveEnvEntries(model.toEntries())
+            settings.remoteHost = hostField.text.trim()
+            if (!settings.isRemoteMode() && service.isInstalled()) {
+                service.saveEnvEntries(model.toEntries())
+            }
             onStop()
             onStart()
         }
@@ -448,12 +482,13 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
             add(backButton)
         }
 
+        val centerPanel = JPanel(BorderLayout()).apply {
+            add(remoteSection, BorderLayout.NORTH)
+            add(envSection, BorderLayout.CENTER)
+        }
+
         return JPanel(BorderLayout()).apply {
-            val header = JLabel("<html><b>Environment Variables</b> — edit .env settings</html>").apply {
-                border = BorderFactory.createEmptyBorder(8, 8, 4, 8)
-            }
-            add(header, BorderLayout.NORTH)
-            add(scrollPane, BorderLayout.CENTER)
+            add(centerPanel, BorderLayout.CENTER)
             add(buttonsPanel, BorderLayout.SOUTH)
         }
     }

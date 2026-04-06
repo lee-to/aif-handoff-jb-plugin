@@ -42,6 +42,7 @@
                     factoryClass="com.aifhandoff.plugin.AifToolWindowFactory"/>
 
         <projectService serviceImplementation="com.aifhandoff.plugin.AifDevServerService"/>
+        <projectService serviceImplementation="com.aifhandoff.plugin.AifSettingsService"/>
 
         <notificationGroup id="AIF Handoff"
                            displayType="BALLOON"/>
