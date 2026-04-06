@@ -3,6 +3,7 @@ package com.aifhandoff.plugin
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
@@ -57,8 +58,8 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     private lateinit var settingsAction: AnAction
     private lateinit var openInBrowserAction: AnAction
     private lateinit var viewPlanAction: AnAction
-    private var viewPlanEnabled = false
-    private var currentTaskPlanPath: String? = null
+    @Volatile private var viewPlanEnabled = false
+    @Volatile private var currentTaskPlanPath: String? = null
     private var startEnabled = true
     private var stopEnabled = false
     private var refreshEnabled = false
@@ -100,33 +101,40 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     private fun buildUI() {
         // --- Toolbar (IDE-style action toolbar) ---
         startAction = object : AnAction("Start", "Start AIF Handoff server", AllIcons.Actions.Execute) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) = onStart()
             override fun update(e: AnActionEvent) { e.presentation.isEnabled = startEnabled }
         }
         stopAction = object : AnAction("Stop", "Stop AIF Handoff server", AllIcons.Actions.Suspend) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) = onStop()
             override fun update(e: AnActionEvent) { e.presentation.isEnabled = stopEnabled }
         }
         refreshAction = object : AnAction("Refresh", "Refresh browser", AllIcons.Actions.Refresh) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) {
                 browser?.cefBrowser?.reloadIgnoreCache()
             }
             override fun update(e: AnActionEvent) { e.presentation.isEnabled = refreshEnabled }
         }
         updateAction = object : AnAction("Update", "Update from upstream repository", AllIcons.Actions.CheckOut) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) = onUpdate()
             override fun update(e: AnActionEvent) { e.presentation.isEnabled = updateEnabled }
         }
         settingsAction = object : AnAction("Settings", "Edit environment variables", AllIcons.General.Settings) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) = onSettings()
         }
 
         viewPlanAction = object : AnAction("View Plan", "Open task plan in editor", AllIcons.Actions.PreviewDetails) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) = onViewPlan()
             override fun update(e: AnActionEvent) { e.presentation.isEnabled = viewPlanEnabled }
         }
 
         openInBrowserAction = object : AnAction("Open in Browser", "Open board in external browser", AllIcons.General.Web) {
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun actionPerformed(e: AnActionEvent) {
                 BrowserUtil.browse(getUrl())
             }
@@ -134,6 +142,7 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
         }
 
         val logAction = object : AnAction("Toggle Log", "Show/hide API log", AllIcons.Debugger.Console) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
             override fun actionPerformed(e: AnActionEvent) {
                 logPanel.isVisible = !logPanel.isVisible
                 this@AifToolWindowPanel.revalidate()
