@@ -1,7 +1,7 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.25"
-    id("org.jetbrains.intellij.platform") version "2.5.0"
+    id("org.jetbrains.kotlin.jvm") version "2.3.0"
+    id("org.jetbrains.intellij.platform") version "2.11.0"
 }
 
 group = "com.aifhandoff"
@@ -16,7 +16,7 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        intellijIdeaCommunity("2024.1")
+        intellijIdeaCommunity("2025.1.1")
     }
 }
 
@@ -47,7 +47,6 @@ intellijPlatform {
         }
         ideaVersion {
             sinceBuild = "241"
-            untilBuild = "253.*"
         }
     }
 }
