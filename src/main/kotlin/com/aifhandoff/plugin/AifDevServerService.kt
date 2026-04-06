@@ -98,9 +98,25 @@ class AifDevServerService(private val project: Project) : Disposable {
         if (state != State.STOPPED) return
 
         if (settings.isRemoteMode()) {
-            setState(State.RUNNING)
-            notify("Connected to remote host: ${settings.remoteHost}", NotificationType.INFORMATION)
-            onReady?.invoke()
+            setState(State.STARTING)
+            logOutput("Connecting to remote host: ${settings.remoteHost}")
+            Thread {
+                try {
+                    logOutput("Remote API base URL: ${getEffectiveApiBaseUrl()}")
+                    setState(State.RUNNING)
+                    notify("Connected to remote host: ${settings.remoteHost}", NotificationType.INFORMATION)
+                    onReady?.invoke()
+                } catch (e: Exception) {
+                    log.error("Failed to connect to remote host", e)
+                    logOutput("Connection failed: ${e.message}")
+                    notify("Connection failed: ${e.message}", NotificationType.ERROR)
+                    setState(State.STOPPED)
+                }
+            }.apply {
+                isDaemon = true
+                name = "AIF-Handoff-RemoteConnect"
+                start()
+            }
             return
         }
 
@@ -368,23 +384,31 @@ class AifDevServerService(private val project: Project) : Disposable {
      */
     fun ensureProject(): String? {
         val rootPath = project.basePath ?: return null
+        logOutput("Ensuring project for rootPath=$rootPath")
         // API server may still be starting — retry a few times
         for (attempt in 1..5) {
             try {
                 val result = findOrCreateProject(rootPath)
-                if (result != null) return result
+                if (result != null) {
+                    logOutput("Project ready: $result")
+                    return result
+                }
+                logOutput("ensureProject attempt $attempt: no project returned")
             } catch (e: Exception) {
                 log.info("ensureProject attempt $attempt failed: ${e.message}")
+                logOutput("ensureProject attempt $attempt failed: ${e.message}")
             }
             Thread.sleep(2000)
         }
         log.warn("Could not ensure project for $rootPath after 5 attempts")
+        logOutput("Could not ensure project for $rootPath after 5 attempts")
         return null
     }
 
     private fun findOrCreateProject(rootPath: String): String? {
         val baseUrl = getEffectiveApiBaseUrl()
         log.info("ensureProject: looking for rootPath=$rootPath at $baseUrl")
+        logOutput("API request: GET $baseUrl/projects")
 
         // GET /api/projects — find existing
         val listConn = URI("$baseUrl/projects").toURL().openConnection() as HttpURLConnection
@@ -409,6 +433,7 @@ class AifDevServerService(private val project: Project) : Disposable {
                     }
                 }
             }
+            logOutput("No existing project found for rootPath=$rootPath, creating new...")
             log.info("ensureProject: no project found with rootPath=$rootPath")
         }
 

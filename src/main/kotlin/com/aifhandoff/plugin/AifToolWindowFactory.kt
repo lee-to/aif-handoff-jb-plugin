@@ -288,9 +288,8 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     }
 
     private fun onStart() {
-        if (!service.isRemoteMode()) {
-            showCard(CARD_PROGRESS)
-        }
+        showCard(CARD_PROGRESS)
+        progressLabel.text = if (service.isRemoteMode()) "Connecting to remote server..." else "Initializing..."
         service.start {
             currentProjectId = service.ensureProject()
             ApplicationManager.getApplication().invokeLater {

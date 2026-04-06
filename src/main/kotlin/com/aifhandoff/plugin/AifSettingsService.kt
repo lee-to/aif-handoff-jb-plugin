@@ -38,10 +38,10 @@ class AifSettingsService : PersistentStateComponent<AifSettingsService.SettingsS
         }
     }
 
-    /** API base URL — remote host + /api or local API port */
+    /** API base URL — in remote mode use remote host as-is */
     fun getApiBaseUrl(localApiPort: Int): String {
         return if (isRemoteMode()) {
-            "${remoteHost.trimEnd('/')}/api"
+            remoteHost.trimEnd('/')
         } else {
             "http://localhost:$localApiPort"
         }
