@@ -467,39 +467,89 @@ class AifDevServerService(private val project: Project) : Disposable {
 
     private fun buildEnvPath(): String {
         val home = System.getProperty("user.home")
-        val extra = listOf(
-            "/usr/local/bin",
-            "/opt/homebrew/bin",
-            "$home/.nvm/current/bin",
-            "$home/.volta/bin",
-            "$home/.fnm/current/bin",
-        )
-        val current = System.getenv("PATH") ?: "/usr/bin:/bin"
-        return (extra + current.split(":")).distinct().joinToString(":")
+        val pathSeparator = File.pathSeparator // ":" on Unix, ";" on Windows
+        val isWindows = System.getProperty("os.name").lowercase().startsWith("windows")
+
+        val extra = if (isWindows) {
+            val programFiles = System.getenv("ProgramFiles") ?: "C:\\Program Files"
+            val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
+            val appData = System.getenv("APPDATA") ?: "$home\\AppData\\Roaming"
+            listOf(
+                "$programFiles\\Git\\bin",
+                "$programFilesX86\\Git\\bin",
+                "$programFiles\\nodejs",
+                "$appData\\npm",
+                "$home\\AppData\\Roaming\\npm",
+                "$home\\.volta\\bin",
+                "$home\\.fnm\\current",
+            )
+        } else {
+            listOf(
+                "/usr/local/bin",
+                "/opt/homebrew/bin",
+                "$home/.nvm/current/bin",
+                "$home/.volta/bin",
+                "$home/.fnm/current/bin",
+            )
+        }
+
+        val current = System.getenv("PATH") ?: if (isWindows) "" else "/usr/bin:/bin"
+        return (extra + current.split(pathSeparator)).distinct().joinToString(pathSeparator)
     }
 
     private fun findNpm(): String = findBinary("npm")
     private fun findGit(): String = findBinary("git")
 
     private fun findBinary(name: String): String {
+        val isWindows = System.getProperty("os.name").lowercase().startsWith("windows")
         val home = System.getProperty("user.home")
-        val candidates = listOf(
-            "/usr/local/bin/$name",
-            "/opt/homebrew/bin/$name",
-            "$home/.nvm/current/bin/$name",
-            "$home/.volta/bin/$name",
-            "/usr/bin/$name",
-        )
-        // Try which first
-        try {
-            val which = ProcessBuilder("which", name).redirectErrorStream(true).start()
-            val path = which.inputStream.bufferedReader().readText().trim()
-            which.waitFor()
-            if (path.isNotEmpty() && File(path).exists()) return path
-        } catch (_: Exception) {}
 
-        return candidates.firstOrNull { File(it).exists() }
-            ?: throw IllegalStateException("$name not found. Please install it and ensure it's in PATH.")
+        if (isWindows) {
+            // On Windows, npm ships as npm.cmd and git as git.exe
+            val winName = when (name) {
+                "npm" -> "npm.cmd"
+                else -> "$name.exe"
+            }
+            val programFiles = System.getenv("ProgramFiles") ?: "C:\\Program Files"
+            val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
+            val appData = System.getenv("APPDATA") ?: "$home\\AppData\\Roaming"
+            val candidates = listOf(
+                "$programFiles\\Git\\bin\\$winName",
+                "$programFilesX86\\Git\\bin\\$winName",
+                "$programFiles\\nodejs\\$winName",
+                "$appData\\npm\\$winName",
+                "$home\\AppData\\Roaming\\npm\\$winName",
+                "$home\\.volta\\bin\\$winName",
+            )
+            candidates.firstOrNull { File(it).exists() }?.let { return it }
+
+            // Fallback: `where` is the Windows equivalent of `which`
+            try {
+                val where = ProcessBuilder("where", name).redirectErrorStream(true).start()
+                val path = where.inputStream.bufferedReader().readLine()?.trim() ?: ""
+                where.waitFor()
+                if (path.isNotEmpty() && File(path).exists()) return path
+            } catch (_: Exception) {}
+        } else {
+            // Try `which` first on Unix/macOS
+            try {
+                val which = ProcessBuilder("which", name).redirectErrorStream(true).start()
+                val path = which.inputStream.bufferedReader().readText().trim()
+                which.waitFor()
+                if (path.isNotEmpty() && File(path).exists()) return path
+            } catch (_: Exception) {}
+
+            val candidates = listOf(
+                "/usr/local/bin/$name",
+                "/opt/homebrew/bin/$name",
+                "$home/.nvm/current/bin/$name",
+                "$home/.volta/bin/$name",
+                "/usr/bin/$name",
+            )
+            candidates.firstOrNull { File(it).exists() }?.let { return it }
+        }
+
+        throw IllegalStateException("$name not found. Please install it and ensure it's in PATH.")
     }
 
     private fun notify(content: String, type: NotificationType) {
