@@ -59,6 +59,12 @@ class AifDevServerService(private val project: Project) : Disposable {
     companion object {
         const val REPO_URL = "https://github.com/lee-to/aif-handoff.git"
         val INSTALL_DIR: File = File(System.getProperty("user.home"), ".aif-handoff")
+
+        val IS_WINDOWS: Boolean = System.getProperty("os.name").lowercase().startsWith("windows")
+        val HOME: String = System.getProperty("user.home")
+        val PROGRAM_FILES: String = System.getenv("ProgramFiles") ?: "C:\\Program Files"
+        val PROGRAM_FILES_X86: String = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
+        val APP_DATA: String = System.getenv("APPDATA") ?: "$HOME\\AppData\\Roaming"
     }
 
     fun addStateListener(listener: (State) -> Unit) {
@@ -80,8 +86,23 @@ class AifDevServerService(private val project: Project) : Disposable {
      * First launch: clone → npm install → db:setup → npm run dev.
      * Subsequent launches: just npm run dev.
      */
+    private val settings get() = project.getService(AifSettingsService::class.java)
+
+    fun isRemoteMode(): Boolean = settings.isRemoteMode()
+
+    fun getEffectiveBaseUrl(): String = settings.getBaseUrl(getWebPort())
+
+    private fun getEffectiveApiBaseUrl(): String = settings.getApiBaseUrl(getApiPort())
+
     fun start(onReady: (() -> Unit)? = null) {
         if (state != State.STOPPED) return
+
+        if (settings.isRemoteMode()) {
+            setState(State.RUNNING)
+            notify("Connected to remote host: ${settings.remoteHost}", NotificationType.INFORMATION)
+            onReady?.invoke()
+            return
+        }
 
         Thread {
             try {
@@ -105,6 +126,11 @@ class AifDevServerService(private val project: Project) : Disposable {
     }
 
     fun stop() {
+        if (settings.isRemoteMode()) {
+            setState(State.STOPPED)
+            notify("Disconnected from remote host", NotificationType.INFORMATION)
+            return
+        }
         stoppingManually = true
         processHandler?.destroyProcess()
         processHandler = null
@@ -357,7 +383,7 @@ class AifDevServerService(private val project: Project) : Disposable {
     }
 
     private fun findOrCreateProject(rootPath: String): String? {
-        val baseUrl = "http://localhost:${getApiPort()}"
+        val baseUrl = getEffectiveApiBaseUrl()
         log.info("ensureProject: looking for rootPath=$rootPath at $baseUrl")
 
         // GET /api/projects — find existing
@@ -419,7 +445,7 @@ class AifDevServerService(private val project: Project) : Disposable {
     data class PlanFileStatus(val exists: Boolean, val path: String?)
 
     fun getTaskPlanFileStatus(taskId: String): PlanFileStatus? {
-        val baseUrl = "http://localhost:${getApiPort()}"
+        val baseUrl = getEffectiveApiBaseUrl()
         return try {
             val conn = URI("$baseUrl/tasks/$taskId/plan-file-status").toURL().openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
@@ -466,60 +492,46 @@ class AifDevServerService(private val project: Project) : Disposable {
     }
 
     private fun buildEnvPath(): String {
-        val home = System.getProperty("user.home")
-        val pathSeparator = File.pathSeparator // ":" on Unix, ";" on Windows
-        val isWindows = System.getProperty("os.name").lowercase().startsWith("windows")
-
-        val extra = if (isWindows) {
-            val programFiles = System.getenv("ProgramFiles") ?: "C:\\Program Files"
-            val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
-            val appData = System.getenv("APPDATA") ?: "$home\\AppData\\Roaming"
+        val extra = if (IS_WINDOWS) {
             listOf(
-                "$programFiles\\Git\\bin",
-                "$programFilesX86\\Git\\bin",
-                "$programFiles\\nodejs",
-                "$appData\\npm",
-                "$home\\AppData\\Roaming\\npm",
-                "$home\\.volta\\bin",
-                "$home\\.fnm\\current",
+                "$PROGRAM_FILES\\Git\\bin",
+                "$PROGRAM_FILES_X86\\Git\\bin",
+                "$PROGRAM_FILES\\nodejs",
+                "$APP_DATA\\npm",
+                "$HOME\\AppData\\Roaming\\npm",
+                "$HOME\\.volta\\bin",
+                "$HOME\\.fnm\\current",
             )
         } else {
             listOf(
                 "/usr/local/bin",
                 "/opt/homebrew/bin",
-                "$home/.nvm/current/bin",
-                "$home/.volta/bin",
-                "$home/.fnm/current/bin",
+                "$HOME/.nvm/current/bin",
+                "$HOME/.volta/bin",
+                "$HOME/.fnm/current/bin",
             )
         }
 
-        val current = System.getenv("PATH") ?: if (isWindows) "" else "/usr/bin:/bin"
-        return (extra + current.split(pathSeparator)).distinct().joinToString(pathSeparator)
+        val current = System.getenv("PATH") ?: if (IS_WINDOWS) "" else "/usr/bin:/bin"
+        return (extra + current.split(File.pathSeparator)).distinct().joinToString(File.pathSeparator)
     }
 
     private fun findNpm(): String = findBinary("npm")
     private fun findGit(): String = findBinary("git")
 
     private fun findBinary(name: String): String {
-        val isWindows = System.getProperty("os.name").lowercase().startsWith("windows")
-        val home = System.getProperty("user.home")
-
-        if (isWindows) {
-            // On Windows, npm ships as npm.cmd and git as git.exe
+        if (IS_WINDOWS) {
             val winName = when (name) {
                 "npm" -> "npm.cmd"
                 else -> "$name.exe"
             }
-            val programFiles = System.getenv("ProgramFiles") ?: "C:\\Program Files"
-            val programFilesX86 = System.getenv("ProgramFiles(x86)") ?: "C:\\Program Files (x86)"
-            val appData = System.getenv("APPDATA") ?: "$home\\AppData\\Roaming"
             val candidates = listOf(
-                "$programFiles\\Git\\bin\\$winName",
-                "$programFilesX86\\Git\\bin\\$winName",
-                "$programFiles\\nodejs\\$winName",
-                "$appData\\npm\\$winName",
-                "$home\\AppData\\Roaming\\npm\\$winName",
-                "$home\\.volta\\bin\\$winName",
+                "$PROGRAM_FILES\\Git\\bin\\$winName",
+                "$PROGRAM_FILES_X86\\Git\\bin\\$winName",
+                "$PROGRAM_FILES\\nodejs\\$winName",
+                "$APP_DATA\\npm\\$winName",
+                "$HOME\\AppData\\Roaming\\npm\\$winName",
+                "$HOME\\.volta\\bin\\$winName",
             )
             candidates.firstOrNull { File(it).exists() }?.let { return it }
 
@@ -531,7 +543,6 @@ class AifDevServerService(private val project: Project) : Disposable {
                 if (path.isNotEmpty() && File(path).exists()) return path
             } catch (_: Exception) {}
         } else {
-            // Try `which` first on Unix/macOS
             try {
                 val which = ProcessBuilder("which", name).redirectErrorStream(true).start()
                 val path = which.inputStream.bufferedReader().readText().trim()
@@ -542,8 +553,8 @@ class AifDevServerService(private val project: Project) : Disposable {
             val candidates = listOf(
                 "/usr/local/bin/$name",
                 "/opt/homebrew/bin/$name",
-                "$home/.nvm/current/bin/$name",
-                "$home/.volta/bin/$name",
+                "$HOME/.nvm/current/bin/$name",
+                "$HOME/.volta/bin/$name",
                 "/usr/bin/$name",
             )
             candidates.firstOrNull { File(it).exists() }?.let { return it }
