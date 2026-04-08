@@ -87,7 +87,8 @@ private class AifToolWindowPanel(private val project: Project) : JPanel(BorderLa
     private var currentProjectId: String? = null
     private fun getUrl(): String {
         val base = service.getEffectiveBaseUrl()
-        return if (currentProjectId != null) "$base/project/$currentProjectId" else base
+        val path = if (currentProjectId != null) "$base/project/$currentProjectId" else base
+        return "$path?_t=${System.currentTimeMillis()}"
     }
 
     init {

@@ -233,13 +233,15 @@ class AifDevServerService(private val project: Project) : Disposable {
                 val text = event.text
                 log.info("AIF dev: $text")
                 logOutput(text)
-                if (!readyFired && outputType == ProcessOutputTypes.STDOUT &&
-                    text.contains("API server started")
-                ) {
+                if (!readyFired && text.contains("API server started")) {
                     readyFired = true
-                    setState(State.RUNNING)
-                    notify("Kanban board ready on port ${getWebPort()}", NotificationType.INFORMATION)
-                    onReady?.invoke()
+                    // Wait for web server to be reachable before loading browser
+                    Thread {
+                        waitForPort(getWebPort(), 15_000)
+                        setState(State.RUNNING)
+                        notify("Kanban board ready on port ${getWebPort()}", NotificationType.INFORMATION)
+                        onReady?.invoke()
+                    }.apply { isDaemon = true; start() }
                 }
             }
 
@@ -362,9 +364,21 @@ class AifDevServerService(private val project: Project) : Disposable {
 
     fun isInstalled(): Boolean = INSTALL_DIR.resolve(".git").exists()
 
+    private fun waitForPort(port: Int, timeoutMs: Long) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                java.net.Socket("localhost", port).use { return }
+            } catch (_: Exception) {
+                Thread.sleep(300)
+            }
+        }
+        logOutput("Warning: web server on port $port not reachable after ${timeoutMs}ms, loading anyway")
+    }
+
     fun getWebPort(): Int = getEnvPort("WEB_PORT", 5180)
 
-    fun getApiPort(): Int = getEnvPort("API_PORT", 3090)
+    fun getApiPort(): Int = getEnvPort("PORT", 3090)
 
     private fun getEnvPort(name: String, default: Int): Int {
         val envFile = INSTALL_DIR.resolve(".env")
