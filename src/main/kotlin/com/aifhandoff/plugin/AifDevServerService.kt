@@ -182,8 +182,8 @@ class AifDevServerService(private val project: Project) : Disposable {
         setState(State.CLONING)
         if (INSTALL_DIR.resolve(".git").exists()) {
             notify("Pulling latest changes...", NotificationType.INFORMATION)
-            runCmd(findGit(), "checkout", ".", workDir = INSTALL_DIR, label = "git checkout .")
-            runCmd(findGit(), "pull", "--ff-only", workDir = INSTALL_DIR, label = "git pull")
+            runCmd(findGit(), "-c", "core.hooksPath=", "checkout", ".", workDir = INSTALL_DIR, label = "git checkout .")
+            runCmd(findGit(), "-c", "core.hooksPath=", "pull", "--ff-only", workDir = INSTALL_DIR, label = "git pull")
         } else {
             notify("Cloning repository...", NotificationType.INFORMATION)
             runCmd(findGit(), "clone", REPO_URL, INSTALL_DIR.absolutePath, label = "git clone")
